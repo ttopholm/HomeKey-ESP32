@@ -1,0 +1,70 @@
+name: AtomS3R build
+
+# Builds esp32s3 firmware with the AtomS3R status display enabled
+# (sdkconfig.defaults.atoms3r). Artifacts: atoms3r.firmware.factory.bin for a
+# first flash, atoms3r.firmware.ota.bin for updates through the web UI.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - atoms3r-display
+
+jobs:
+  littlefs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: 'data'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install
+        working-directory: data
+      - name: Build web UI
+        run: bun run build
+        working-directory: data
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ui-build-directory
+          path: data/dist
+          retention-days: 1
+
+  build:
+    runs-on: ubuntu-latest
+    needs: littlefs
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: 'recursive'
+      - uses: actions/download-artifact@v8
+        with:
+          name: ui-build-directory
+          path: data/dist
+      - name: Prepare build directories
+        run: |
+          mkdir -p build managed_components
+          sudo chown -R 1000:1000 build managed_components
+      - name: ESP-IDF build (esp32s3 + AtomS3R display)
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.5.5
+          target: esp32s3
+          path: '.'
+          extra_docker_args: >-
+            -v ${{ github.workspace }}/build:/project/build
+            -v ${{ github.workspace }}/managed_components:/project/managed_components
+          command: CI=true idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.atoms3r" merge-bin
+      - name: Collect binaries
+        run: |
+          sudo chown -R $USER:$USER build
+          grep -q '^CONFIG_HK_STATUS_DISPLAY_ATOMS3R=y' sdkconfig
+          mv build/HomeKey-ESP32.bin build/atoms3r.firmware.ota.bin
+          mv build/merged-binary.bin build/atoms3r.firmware.factory.bin
+      - uses: actions/upload-artifact@v7
+        with:
+          name: atoms3r-firmware
+          path: |
+            build/atoms3r.firmware.factory.bin
+            build/atoms3r.firmware.ota.bin

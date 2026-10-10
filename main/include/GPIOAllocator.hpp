@@ -72,7 +72,8 @@ public:
     Hardware,
     Nfc,
     Eth,
-    HomeKit
+    HomeKit,
+    Display
   };
 
   enum class PinRole : uint8_t {
@@ -219,6 +220,7 @@ public:
       case PinConsumer::Nfc:      return "Nfc";
       case PinConsumer::Eth:      return "Eth";
       case PinConsumer::HomeKit:  return "HomeKit";
+      case PinConsumer::Display:  return "Display";
     }
     return "Unknown";
   }

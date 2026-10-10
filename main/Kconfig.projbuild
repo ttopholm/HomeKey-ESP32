@@ -7,3 +7,51 @@ menu "Arduino subsystem serial logging"
     bool "Initialize serial logging for the Arduino subsystem and by extent for HomeSpan"
     default y
 endmenu
+
+menu "Status display (M5Stack AtomS3R)"
+  config HK_STATUS_DISPLAY_ATOMS3R
+    bool "Show the lock state on the AtomS3R's built-in display"
+    depends on IDF_TARGET_ESP32S3
+    default n
+    help
+      Drives the 128x128 screen of an M5Stack AtomS3R: a padlock icon with the
+      current lock state, and a short confirmation when a HomeKey or NFC tag
+      is tapped. Uses GPIO 0, 14, 15, 21, 41, 42, 45 and 48, so only enable
+      it when the firmware runs on an AtomS3R.
+
+  if HK_STATUS_DISPLAY_ATOMS3R
+    choice HK_STATUS_DISPLAY_LANG
+      prompt "Language of the screen labels"
+      default HK_STATUS_DISPLAY_LANG_EN
+      config HK_STATUS_DISPLAY_LANG_EN
+        bool "English"
+      config HK_STATUS_DISPLAY_LANG_DA
+        bool "Danish"
+    endchoice
+
+    config HK_STATUS_DISPLAY_BRIGHTNESS
+      int "Backlight brightness when active (1-255)"
+      range 1 255
+      default 160
+
+    config HK_STATUS_DISPLAY_DIM_BRIGHTNESS
+      int "Backlight brightness when idle (0 = off)"
+      range 0 255
+      default 12
+
+    config HK_STATUS_DISPLAY_DIM_TIMEOUT_S
+      int "Seconds without activity before dimming (0 = never dim)"
+      range 0 86400
+      default 30
+
+    config HK_STATUS_DISPLAY_FEEDBACK_MS
+      int "How long a tap confirmation stays on screen (ms)"
+      range 300 10000
+      default 1500
+
+    config HK_STATUS_DISPLAY_TRANSITION_TIMEOUT_S
+      int "Stop showing locking/unlocking after this many seconds without a final state"
+      range 1 600
+      default 20
+  endif
+endmenu

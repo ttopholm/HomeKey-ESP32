@@ -23,6 +23,7 @@
 #include "WebSocketLogSinker.h"
 #include "lwip/inet.h"
 #include "nvs_flash.h"
+#include "StatusDisplay.hpp"
 
 std::unique_ptr<LockManager> lockManager;
 NvsCredentialStore readerDataManager;
@@ -33,6 +34,9 @@ std::unique_ptr<automation::AutomationEngine> automationEngine;
 WebServerManager webServerManager(configManager, readerDataManager);
 std::unique_ptr<HomeKitLock> homekitLock;
 std::unique_ptr<NfcManager> nfcManager;
+#if CONFIG_HK_STATUS_DISPLAY_ATOMS3R
+std::unique_ptr<StatusDisplay> statusDisplay;
+#endif
 
 static dns_server_handle_t dns_server = NULL;
 
@@ -223,6 +227,13 @@ void setup() {
   hardwareManager->begin();
   homekitLock->begin();
   lockManager->begin();
+#if CONFIG_HK_STATUS_DISPLAY_ATOMS3R
+  statusDisplay = std::make_unique<StatusDisplay>();
+  if (!statusDisplay->begin(static_cast<uint8_t>(lockManager->getCurrentState()))) {
+    ESP_LOGW(TAG, "Status display not available, continuing without it");
+    statusDisplay.reset();
+  }
+#endif
   pollHS = true;
 }
 /**
