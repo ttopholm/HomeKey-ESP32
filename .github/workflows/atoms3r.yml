@@ -56,11 +56,12 @@ jobs:
             -v ${{ github.workspace }}/build:/project/build
             -v ${{ github.workspace }}/managed_components:/project/managed_components
           command: >-
-            bash -c 'set -o pipefail; CI=true idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.atoms3r" merge-bin 2>&1 | tee build/build.log'
+            bash -c 'set -o pipefail; CI=true idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.atoms3r" merge-bin 2>&1 | tee /project/build.log'
       - name: Report compiler errors
         if: failure()
         run: |
-          grep -E "error:|Error " build/build.log | head -30 | while IFS= read -r l; do echo "::error::$l"; done || true
+          ls -la build.log build/build.log 2>&1 | while IFS= read -r l; do echo "::warning::$l"; done
+          { grep -E "error:|Error|FAILED|fatal" build.log | head -30; tail -n 15 build.log; } 2>&1 | while IFS= read -r l; do echo "::error::$l"; done || true
       - name: Collect binaries
         run: |
           sudo chown -R $USER:$USER build
