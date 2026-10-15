@@ -2,7 +2,8 @@ name: AtomS3R build
 
 # Builds esp32s3 firmware with the AtomS3R status display enabled
 # (sdkconfig.defaults.atoms3r). Artifacts: atoms3r.firmware.factory.bin for a
-# first flash, atoms3r.firmware.ota.bin for updates through the web UI.
+# first flash; for updates through the web UI's OTA page, atoms3r.firmware.ota.bin
+# (firmware) and atoms3r.littlefs.bin (web UI).
 on:
   workflow_dispatch:
   push:
@@ -63,9 +64,12 @@ jobs:
           grep -q '^CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y' sdkconfig
           mv build/HomeKey-ESP32.bin build/atoms3r.firmware.ota.bin
           mv build/merged-binary.bin build/atoms3r.firmware.factory.bin
+          # Web UI image for the LittleFS upload on the OTA page (sized for the 1 MB partition).
+          cp build/spiffs.bin build/atoms3r.littlefs.bin
       - uses: actions/upload-artifact@v7
         with:
           name: atoms3r-firmware
           path: |
             build/atoms3r.firmware.factory.bin
             build/atoms3r.firmware.ota.bin
+            build/atoms3r.littlefs.bin
