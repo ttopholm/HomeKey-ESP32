@@ -1,7 +1,6 @@
 # M5Stack AtomS3R: enable the built-in status display.
 # Build with: idf.py set-target esp32s3 && idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.atoms3r" merge-bin
 CONFIG_HK_STATUS_DISPLAY_ATOMS3R=y
-CONFIG_HK_STATUS_DISPLAY_LANG_DA=y
 # 8 MB flash: own partition table with a 1 MB web UI partition
 # (the stock 128 KB one is full).
 CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
