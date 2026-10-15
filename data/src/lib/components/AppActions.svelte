@@ -928,6 +928,19 @@
                   />
                 </div>
               </div>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="form-control">
+                  <label class="label" for="displayRotation">
+                    <span class="label-text text-sm">Rotation</span>
+                  </label>
+                  <select id="displayRotation" class="select select-bordered w-full" bind:value={actionsConfig.displayRotation}>
+                    <option value={0}>0°</option>
+                    <option value={1}>90° clockwise</option>
+                    <option value={2}>180°</option>
+                    <option value={3}>90° counter-clockwise</option>
+                  </select>
+                </div>
+              </div>
               <div class="text-sm text-base-content/70 space-y-1">
                 <p>
                   <b>Neutral</b> shows a "tap your phone" screen instead of the lock state. After a

@@ -280,6 +280,9 @@ void StatusDisplay::setBrightness(uint8_t level) {
 }
 
 void StatusDisplay::flush() {
+  // Every frame is drawn from scratch, so rotating the finished frame in
+  // place is enough to support a sideways or upside-down mounted screen.
+  statusgfx::rotateSquare(m_fb, LCD_SIZE, m_rotation);
   const uint16_t xs = m_colStart, xe = m_colStart + LCD_SIZE - 1;
   const uint16_t ys = m_rowStart, ye = m_rowStart + LCD_SIZE - 1;
   const uint8_t col[4] = {uint8_t(xs >> 8), uint8_t(xs), uint8_t(xe >> 8), uint8_t(xe)};
@@ -346,7 +349,8 @@ void StatusDisplay::loadSettings() {
       a.displayLabelAccepted, a.displayLabelRejected, a.displayLabelTag,
       a.displayLabelIdle,
   };
-  Settings settings{a.displayMode, a.displayIdleOff, a.displayTimeout};
+  Settings settings{a.displayMode, a.displayIdleOff, a.displayTimeout,
+                    uint8_t(a.displayRotation & 3)};
   xSemaphoreTake(m_settingsMutex, portMAX_DELAY);
   m_customLabels = std::move(fresh);
   m_settings = settings;
@@ -385,6 +389,7 @@ bool StatusDisplay::begin(uint8_t initialLockState, const ConfigManager& config)
   m_settingsMutex = xSemaphoreCreateMutex();
   if (!m_settingsMutex) return false;
   loadSettings();
+  m_rotation = currentSettings().rotation;
   if (!claimPins()) return false;
 
   m_fb = static_cast<uint16_t*>(heap_caps_malloc(FB_BYTES, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
@@ -504,6 +509,7 @@ void StatusDisplay::run() {
         case MsgType::Settings:
           labels = currentLabels(labelStore);
           settings = currentSettings();
+          m_rotation = settings.rotation;
           overlay = false;
           redraw = true;
           wake = true;  // show the result right away

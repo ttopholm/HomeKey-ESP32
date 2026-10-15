@@ -85,7 +85,7 @@ public:
       uint16_t offset;
       FieldType type;
     };
-    static constexpr size_t kFieldCount = 111;
+    static constexpr size_t kFieldCount = 112;
     static const ConfigField kConfigFields[kFieldCount];
 
     // Guards that table section names and sectionBase() agree; aborts at

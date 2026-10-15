@@ -327,6 +327,30 @@ uint8_t displayStateFor(uint8_t current, uint8_t target) {
   return current <= STATE_LOCKING ? current : uint8_t(STATE_UNKNOWN);
 }
 
+void rotateSquare(uint16_t* px, int n, uint8_t quarterTurnsCw) {
+  const uint8_t turns = quarterTurnsCw & 3;
+  if (turns == 0) return;
+  if (turns == 2) {
+    std::reverse(px, px + size_t(n) * n);
+    return;
+  }
+  auto at = [px, n](int r, int c) -> uint16_t& { return px[r * n + c]; };
+  for (int i = 0; i < n / 2; i++) {
+    for (int j = i; j < n - 1 - i; j++) {
+      uint16_t& a = at(i, j);                  // top
+      uint16_t& b = at(j, n - 1 - i);          // right
+      uint16_t& c = at(n - 1 - i, n - 1 - j);  // bottom
+      uint16_t& d = at(n - 1 - j, i);          // left
+      const uint16_t t = a;
+      if (turns == 1) {  // clockwise: left -> top -> right -> bottom -> left
+        a = d; d = c; c = b; b = t;
+      } else {           // counter-clockwise
+        a = b; b = c; c = d; d = t;
+      }
+    }
+  }
+}
+
 const Labels& defaultLabels(Language lang) { return lang == Language::Danish ? kDanish : kEnglish; }
 
 void renderLockState(Canvas& c, uint8_t state, const Labels& l) {

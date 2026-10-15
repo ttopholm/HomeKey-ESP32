@@ -104,6 +104,10 @@ void renderIdle(Canvas& c, const Labels& labels);
 /// Draws a short confirmation after a tap.
 void renderFeedback(Canvas& c, Feedback fb, const Labels& labels);
 
+/// Rotates a square n x n pixel buffer in place by `quarterTurnsCw` x 90
+/// degrees clockwise (0-3), for screens mounted sideways or upside down.
+void rotateSquare(uint16_t* px, int n, uint8_t quarterTurnsCw);
+
 /// Decides which state the screen should show from a LOCK_STATE_CHANGED event.
 /// Returns STATE_LOCKING / STATE_UNLOCKING while the lock is moving towards a
 /// new target, otherwise the current state.

@@ -62,6 +62,7 @@ private:
     uint8_t mode = 0;       // 0 = lock state, 1 = neutral
     bool idleOff = false;   // off instead of dimmed after the timeout
     uint16_t timeoutS = 30; // 0 = never
+    uint8_t rotation = 0;   // quarter turns clockwise
   };
   static constexpr size_t kLabelCount = 10;
   using LabelStore = std::array<std::string, kLabelCount>;
@@ -81,6 +82,7 @@ private:
   uint16_t* m_fb = nullptr;
   uint16_t m_colStart = 0;
   uint16_t m_rowStart = 0;
+  uint8_t m_rotation = 0;  // applied to every frame in flush(); render-task only after begin()
   SemaphoreHandle_t m_txDone = nullptr;
   QueueHandle_t m_queue = nullptr;
   TaskHandle_t m_task = nullptr;

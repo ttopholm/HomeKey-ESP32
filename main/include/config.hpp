@@ -274,6 +274,7 @@ namespace espConfig
     uint8_t displayMode = 0;        // resting screen: 0 = lock state, 1 = neutral
     bool displayIdleOff = false;    // after the timeout: false = dim, true = screen off
     uint16_t displayTimeout = 30;   // seconds without activity before dimming/off (0 = never)
+    uint8_t displayRotation = 0;    // 0-3: quarter turns clockwise
   };
 
   /* Automation rules: stored as the exact JSON blob authored in the web UI.

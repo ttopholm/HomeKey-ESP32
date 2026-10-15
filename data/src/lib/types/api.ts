@@ -300,6 +300,8 @@ export interface ActionsConfig {
   displayIdleOff: boolean;
   /** Status display: seconds without activity before dimming/off, 0 = never */
   displayTimeout: number;
+  /** Status display rotation in quarter turns clockwise (0-3) */
+  displayRotation: number;
   /** Read-only: present when the firmware was built with the status display */
   _displayAvailable?: boolean;
   /** Read-only: built-in display texts, keyed like the displayLabel* fields */
