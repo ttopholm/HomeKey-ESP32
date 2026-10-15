@@ -7,6 +7,7 @@
 #include "esp_ota_ops.h"
 #include "esp_system.h"
 #include "app_event_loop.hpp"
+#include "StatusDisplayGfx.hpp"
 #include "app_events.hpp"
 #include "EthernetDriver.hpp"
 #include "fmt/ranges.h"
@@ -773,6 +774,31 @@ esp_err_t WebServerManager::handleGetConfig(httpd_req_t *req) {
   } else if (type == "actions"){
     std::string s = instance->m_configManager.serializeToJson<espConfig::actions_config_t>();
     dataGuard.reset(cJSON_Parse(s.c_str()));
+#if CONFIG_HK_STATUS_DISPLAY_ATOMS3R
+    // Read-only hint for the web UI: only builds with the status display
+    // show the "Display" tab. Not a config field, never saved.
+    if (dataGuard.get()) {
+      cJSON_AddBoolToObject(dataGuard.get(), "_displayAvailable", true);
+      // Built-in texts, shown as placeholders for labels left empty.
+      const statusgfx::Labels& d = statusgfx::defaultLabels(
+#if CONFIG_HK_STATUS_DISPLAY_LANG_DA
+          statusgfx::Language::Danish
+#else
+          statusgfx::Language::English
+#endif
+      );
+      cJSON* defs = cJSON_AddObjectToObject(dataGuard.get(), "_displayDefaults");
+      cJSON_AddStringToObject(defs, "displayLabelLocked", d.locked);
+      cJSON_AddStringToObject(defs, "displayLabelUnlocked", d.unlocked);
+      cJSON_AddStringToObject(defs, "displayLabelLocking", d.locking);
+      cJSON_AddStringToObject(defs, "displayLabelUnlocking", d.unlocking);
+      cJSON_AddStringToObject(defs, "displayLabelJammed", d.jammed);
+      cJSON_AddStringToObject(defs, "displayLabelUnknown", d.unknown);
+      cJSON_AddStringToObject(defs, "displayLabelAccepted", d.accepted);
+      cJSON_AddStringToObject(defs, "displayLabelRejected", d.rejected);
+      cJSON_AddStringToObject(defs, "displayLabelTag", d.tag);
+    }
+#endif
   } else if (type == "automation"){
     std::string s = instance->m_configManager.serializeToJson<espConfig::automation_config_t>();
     dataGuard.reset(cJSON_Parse(s.c_str()));
@@ -1051,7 +1077,7 @@ esp_err_t WebServerManager::handleSaveConfig(httpd_req_t *req) {
     return ESP_OK; // validateRequest already sent a full error response
   }
 
-  bool success = false, rebootNeeded = false;
+  bool success = false, rebootNeeded = false, displayLabelsChanged = false;
   std::string rebootMsg, errorMsg;
 
   cJSON *it = obj.get()->child;
@@ -1103,6 +1129,8 @@ esp_err_t WebServerManager::handleSaveConfig(httpd_req_t *req) {
       std::vector<uint8_t> event_data;
       alpaca::serialize(event, event_data);
       AppEventLoop::publish(HK_EVENT, HK_INTERNAL_EVENT, event_data.data(), event_data.size());
+    } else if (keyStr.starts_with("displayLabel")) {
+      displayLabelsChanged = true;
     } else if (keyStr == "neoPixelType") {
       rebootNeeded = true;
       rebootMsg = "Pixel Type changed, reboot needed! Rebooting...";
@@ -1128,6 +1156,13 @@ esp_err_t WebServerManager::handleSaveConfig(httpd_req_t *req) {
     result = instance->m_configManager.updateFromJson<espConfig::actions_config_t>(data_str);
     if (!result.empty()) {
       success = instance->m_configManager.saveConfig<espConfig::actions_config_t>();
+      if (success && displayLabelsChanged) {
+        // Published after the update so subscribers read the new values.
+        EventValueChanged s{.name = "displayLabels"};
+        std::vector<uint8_t> d;
+        alpaca::serialize(s, d);
+        AppEventLoop::publish(HW_EVENT, HW_CONFIG_CHANGED, d.data(), d.size());
+      }
     }
   } else if (type == "automation") {
     result = instance->m_configManager.updateFromJson<espConfig::automation_config_t>(data_str);

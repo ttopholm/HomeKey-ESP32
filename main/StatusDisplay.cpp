@@ -12,6 +12,8 @@
 #include "esp_timer.h"
 #include "eventStructs.hpp"
 #include "StatusDisplayGfx.hpp"
+#include "ConfigManager.hpp"
+#include "config.hpp"
 
 namespace {
 const char* TAG = "StatusDisplay";
@@ -106,6 +108,7 @@ bool IRAM_ATTR onColorDone(esp_lcd_panel_io_handle_t, esp_lcd_panel_io_event_dat
 
 StatusDisplay::~StatusDisplay() {
   m_lockEvent.reset();
+  m_configEvent.reset();
   m_nfcEvent.reset();
   if (m_task) vTaskDelete(m_task);
   if (m_io) esp_lcd_panel_io_del(m_io);
@@ -115,6 +118,7 @@ StatusDisplay::~StatusDisplay() {
   if (m_fb) heap_caps_free(m_fb);
   if (m_queue) vQueueDelete(m_queue);
   if (m_txDone) vSemaphoreDelete(m_txDone);
+  if (m_labelsMutex) vSemaphoreDelete(m_labelsMutex);
 }
 
 bool StatusDisplay::claimPins() {
@@ -288,6 +292,16 @@ void StatusDisplay::post(const Msg& m) {
 }
 
 void StatusDisplay::subscribeEvents() {
+  m_configEvent = AppEventLoop::subscribe(
+      HW_EVENT, HW_CONFIG_CHANGED, [this](const uint8_t* data, size_t size) {
+        if (size == 0 || data == nullptr) return;
+        std::span<const uint8_t> payload(data, size);
+        std::error_code ec;
+        EventValueChanged ev = alpaca::deserialize<EventValueChanged>(payload, ec);
+        if (ec || ev.name != "displayLabels") return;
+        loadLabels();
+        post({MsgType::Redraw, 0, 0});
+      });
   m_lockEvent = AppEventLoop::subscribe(
       LOCK_EVENT, LOCK_STATE_CHANGED, [this](const uint8_t* data, size_t size) {
         if (size == 0 || data == nullptr) return;
@@ -317,8 +331,37 @@ void StatusDisplay::subscribeEvents() {
       });
 }
 
-bool StatusDisplay::begin(uint8_t initialLockState) {
+void StatusDisplay::loadLabels() {
+  const auto& a = m_config->getConfig<espConfig::actions_config_t>();
+  std::array<std::string, 9> fresh = {
+      a.displayLabelLocked,   a.displayLabelUnlocked, a.displayLabelLocking,
+      a.displayLabelUnlocking, a.displayLabelJammed,  a.displayLabelUnknown,
+      a.displayLabelAccepted, a.displayLabelRejected, a.displayLabelTag,
+  };
+  xSemaphoreTake(m_labelsMutex, portMAX_DELAY);
+  m_customLabels = std::move(fresh);
+  xSemaphoreGive(m_labelsMutex);
+}
+
+statusgfx::Labels StatusDisplay::currentLabels(std::array<std::string, 9>& storage) {
+  xSemaphoreTake(m_labelsMutex, portMAX_DELAY);
+  storage = m_customLabels;
+  xSemaphoreGive(m_labelsMutex);
+  const statusgfx::Labels& d = statusgfx::defaultLabels(language());
+  auto pick = [&](size_t i, const char* fallback) {
+    return storage[i].empty() ? fallback : storage[i].c_str();
+  };
+  return {pick(0, d.locked),   pick(1, d.unlocked), pick(2, d.locking),
+          pick(3, d.unlocking), pick(4, d.jammed),  pick(5, d.unknown),
+          pick(6, d.accepted),  pick(7, d.rejected), pick(8, d.tag)};
+}
+
+bool StatusDisplay::begin(uint8_t initialLockState, const ConfigManager& config) {
   m_initialState = initialLockState;
+  m_config = &config;
+  m_labelsMutex = xSemaphoreCreateMutex();
+  if (!m_labelsMutex) return false;
+  loadLabels();
   if (!claimPins()) return false;
 
   m_fb = static_cast<uint16_t*>(heap_caps_malloc(FB_BYTES, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
@@ -355,8 +398,9 @@ bool StatusDisplay::begin(uint8_t initialLockState) {
 
   // Draw the first frame before the backlight comes on.
   statusgfx::Canvas canvas(m_fb, LCD_SIZE, LCD_SIZE, true);
+  std::array<std::string, 9> labelStore;
   statusgfx::renderLockState(canvas, statusgfx::displayStateFor(initialLockState, initialLockState),
-                             language());
+                             currentLabels(labelStore));
   flush();
   xSemaphoreTake(m_txDone, pdMS_TO_TICKS(200));
   xSemaphoreGive(m_txDone);
@@ -377,7 +421,8 @@ void StatusDisplay::taskEntry(void* arg) { static_cast<StatusDisplay*>(arg)->run
 void StatusDisplay::run() {
   using namespace statusgfx;
   Canvas canvas(m_fb, LCD_SIZE, LCD_SIZE, true);
-  const Language lang = language();
+  std::array<std::string, 9> labelStore;
+  Labels labels = currentLabels(labelStore);
 
   uint8_t current = m_initialState;
   uint8_t shown = displayStateFor(current, current);
@@ -405,11 +450,16 @@ void StatusDisplay::run() {
           transitionSince = now;
           redraw = !overlay;
         }
+      } else if (m.type == MsgType::Redraw) {
+        // Labels were changed in the web UI: show the result right away.
+        labels = currentLabels(labelStore);
+        overlay = false;
+        redraw = true;
       } else {
         overlay = true;
         overlayUntil = now + CONFIG_HK_STATUS_DISPLAY_FEEDBACK_MS;
         xSemaphoreTake(m_txDone, pdMS_TO_TICKS(200));  // previous frame fully sent
-        renderFeedback(canvas, static_cast<Feedback>(m.a), lang);
+        renderFeedback(canvas, static_cast<Feedback>(m.a), labels);
         flush();
       }
     }
@@ -449,7 +499,7 @@ void StatusDisplay::run() {
 
     if (redraw) {
       xSemaphoreTake(m_txDone, pdMS_TO_TICKS(200));  // previous frame fully sent
-      renderLockState(canvas, shown, lang);
+      renderLockState(canvas, shown, labels);
       flush();
     }
   }

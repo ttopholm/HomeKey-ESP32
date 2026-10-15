@@ -76,10 +76,26 @@ private:
   bool m_swap;
 };
 
+/// Texts shown under the icons. Pointers must stay valid while rendering.
+struct Labels {
+  const char* locked;
+  const char* unlocked;
+  const char* locking;
+  const char* unlocking;
+  const char* jammed;
+  const char* unknown;
+  const char* accepted;
+  const char* rejected;
+  const char* tag;
+};
+
+/// Built-in texts for a language, used for any label left empty in the config.
+const Labels& defaultLabels(Language lang);
+
 /// Draws the resting screen for a lock state.
-void renderLockState(Canvas& c, uint8_t state, Language lang);
+void renderLockState(Canvas& c, uint8_t state, const Labels& labels);
 /// Draws a short confirmation after a tap.
-void renderFeedback(Canvas& c, Feedback fb, Language lang);
+void renderFeedback(Canvas& c, Feedback fb, const Labels& labels);
 
 /// Decides which state the screen should show from a LOCK_STATE_CHANGED event.
 /// Returns STATE_LOCKING / STATE_UNLOCKING while the lock is moving towards a

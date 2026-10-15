@@ -135,7 +135,7 @@ const ConfigManager::ConfigField ConfigManager::kConfigFields[ConfigManager::kFi
   F("misc", misc_config_t, keypadMinCodeLength, U8),
   F("misc", misc_config_t, keypadMaxCodeLength, U8),
   F("misc", misc_config_t, keypadMaxCodes, U8),
-  // --- actions (30) ---
+  // --- actions (39) ---
   F("actions", actions_config_t, nfcNeopixelPin, U8),
   F("actions", actions_config_t, neoPixelType, U8),
   F("actions", actions_config_t, neopixelSuccessColor, ColorMap),
@@ -166,6 +166,15 @@ const ConfigManager::ConfigField ConfigManager::kConfigFields[ConfigManager::kFi
   F("actions", actions_config_t, hkAltActionInitPin, U8),
   F("actions", actions_config_t, hkAltActionInitLedPin, U8),
   F("actions", actions_config_t, hkAltActionInitTimeout, U16),
+  F("actions", actions_config_t, displayLabelLocked, Str),
+  F("actions", actions_config_t, displayLabelUnlocked, Str),
+  F("actions", actions_config_t, displayLabelLocking, Str),
+  F("actions", actions_config_t, displayLabelUnlocking, Str),
+  F("actions", actions_config_t, displayLabelJammed, Str),
+  F("actions", actions_config_t, displayLabelUnknown, Str),
+  F("actions", actions_config_t, displayLabelAccepted, Str),
+  F("actions", actions_config_t, displayLabelRejected, Str),
+  F("actions", actions_config_t, displayLabelTag, Str),
   // --- automation (1) ---
   F("automation", automation_config_t, rulesJson, Str),
 };

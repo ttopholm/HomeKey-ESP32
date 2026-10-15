@@ -8,7 +8,43 @@
     error,
   }: { actions: ActionsConfig; error?: string | null } = $props();
 
-  let activeTab = $state<'nfc' | 'state'>('nfc');
+  let activeTab = $state<'nfc' | 'state' | 'display'>('nfc');
+
+  // Only firmware built with the status display reports these.
+  // svelte-ignore state_referenced_locally
+  const hasDisplay = actions?._displayAvailable === true;
+  // svelte-ignore state_referenced_locally
+  const displayDefaults: Record<string, string> = actions?._displayDefaults ?? {};
+
+  type LabelKey =
+    | 'displayLabelLocked' | 'displayLabelUnlocked' | 'displayLabelLocking'
+    | 'displayLabelUnlocking' | 'displayLabelJammed' | 'displayLabelUnknown'
+    | 'displayLabelAccepted' | 'displayLabelRejected' | 'displayLabelTag';
+
+  const lockLabels: { key: LabelKey; title: string }[] = [
+    { key: 'displayLabelLocked', title: 'Locked' },
+    { key: 'displayLabelUnlocked', title: 'Unlocked' },
+    { key: 'displayLabelLocking', title: 'Locking' },
+    { key: 'displayLabelUnlocking', title: 'Unlocking' },
+    { key: 'displayLabelJammed', title: 'Jammed' },
+    { key: 'displayLabelUnknown', title: 'Unknown' },
+  ];
+  const tapLabels: { key: LabelKey; title: string }[] = [
+    { key: 'displayLabelAccepted', title: 'HomeKey accepted' },
+    { key: 'displayLabelRejected', title: 'HomeKey rejected' },
+    { key: 'displayLabelTag', title: 'NFC tag read' },
+  ];
+
+  // The display font has uppercase A-Z, digits, common punctuation and ÆØÅ.
+  const unsupported = (text: string): string[] => {
+    const bad = new Set<string>();
+    for (const ch of text.toUpperCase()) {
+      const code = ch.charCodeAt(0);
+      if ((code >= 0x20 && code <= 0x5f) || 'ÆØÅ'.includes(ch)) continue;
+      bad.add(ch);
+    }
+    return [...bad];
+  };
 
   // svelte-ignore state_referenced_locally
   let actionsConfig = $state<ActionsConfig>($state.snapshot(actions));
@@ -107,6 +143,29 @@
           </svg>
           <span class="text-[10px] sm:text-xs mt-0.5">State Triggers</span>
         </button>
+        {#if hasDisplay}
+          <button
+            type="button"
+            class="flex-1 tab flex-col py-2 rounded-lg transition-colors {activeTab === 'display' ? 'bg-base-100 text-primary font-medium shadow-sm' : 'text-base-content/60 hover:bg-base-200'}"
+            onclick={() => activeTab = 'display'}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke-width="1.5"
+              stroke="currentColor"
+              class="size-4"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M9 17.25v1.007a3 3 0 0 1-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0 1 15 18.257V17.25m6-12V15a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 15V5.25m18 0A2.25 2.25 0 0 0 18.75 3H5.25A2.25 2.25 0 0 0 3 5.25m18 0V12a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 12V5.25"
+              />
+            </svg>
+            <span class="text-[10px] sm:text-xs mt-0.5">Display</span>
+          </button>
+        {/if}
       </div>
 
       <!-- Tab Content -->
@@ -826,6 +885,45 @@
                 </div>
               </div>
             </div>
+      {:else if activeTab === 'display' && hasDisplay}
+        <div class="space-y-2">
+          <div class="bg-base-200 rounded-box p-4 text-sm text-base-content/70">
+            Texts shown on the status display. Leave a field empty to use the built-in text
+            (shown greyed out). About 10 characters fit at full size; longer texts are drawn
+            smaller. Letters are shown in uppercase, and Æ, Ø and Å are supported.
+            Changes apply as soon as you save, no reboot needed.
+          </div>
+          {#each [{ title: 'Lock state', items: lockLabels }, { title: 'After a tap', items: tapLabels }] as group (group.title)}
+            <div class="collapse collapse-arrow bg-base-200">
+              <input type="checkbox" name="display-{group.title}" checked />
+              <div class="collapse-title font-medium">{group.title}</div>
+              <div class="collapse-content">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {#each group.items as item (item.key)}
+                    <div class="form-control">
+                      <label class="label" for={item.key}>
+                        <span class="label-text text-sm">{item.title}</span>
+                      </label>
+                      <input
+                        id={item.key}
+                        type="text"
+                        maxlength="20"
+                        bind:value={actionsConfig[item.key]}
+                        placeholder={displayDefaults[item.key] ?? ''}
+                        class="input input-bordered w-full uppercase"
+                      />
+                      {#if unsupported(actionsConfig[item.key] ?? '').length > 0}
+                        <span class="text-xs text-warning mt-1">
+                          Shown as "?": {unsupported(actionsConfig[item.key] ?? '').join(' ')}
+                        </span>
+                      {/if}
+                    </div>
+                  {/each}
+                </div>
+              </div>
+            </div>
+          {/each}
+        </div>
       {/if}
 
       <!-- Action Buttons -->

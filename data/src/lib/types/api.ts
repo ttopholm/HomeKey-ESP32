@@ -274,6 +274,28 @@ export interface ActionsConfig {
   hkAltActionTimeout: number;
   /** GPIO state for HomeKey alternate action */
   hkAltActionGpioState: number;
+  /** Status display text: Lock is locked (empty = built-in) */
+  displayLabelLocked: string;
+  /** Status display text: Lock is unlocked (empty = built-in) */
+  displayLabelUnlocked: string;
+  /** Status display text: Lock is locking (empty = built-in) */
+  displayLabelLocking: string;
+  /** Status display text: Lock is unlocking (empty = built-in) */
+  displayLabelUnlocking: string;
+  /** Status display text: Lock is jammed (empty = built-in) */
+  displayLabelJammed: string;
+  /** Status display text: Lock state is unknown (empty = built-in) */
+  displayLabelUnknown: string;
+  /** Status display text: HomeKey accepted (empty = built-in) */
+  displayLabelAccepted: string;
+  /** Status display text: HomeKey rejected (empty = built-in) */
+  displayLabelRejected: string;
+  /** Status display text: Regular NFC tag read (empty = built-in) */
+  displayLabelTag: string;
+  /** Read-only: present when the firmware was built with the status display */
+  _displayAvailable?: boolean;
+  /** Read-only: built-in display texts, keyed like the displayLabel* fields */
+  _displayDefaults?: Record<string, string>;
 }
 
 /**

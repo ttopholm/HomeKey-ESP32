@@ -141,24 +141,12 @@ constexpr uint32_t kBlue = Canvas::rgb(0x34, 0x98, 0xDB);
 constexpr uint32_t kRed = Canvas::rgb(0xE7, 0x4C, 0x3C);
 constexpr uint32_t kGrey = Canvas::rgb(0x8A, 0x94, 0xA0);
 
-struct Labels {
-  const char* locked;
-  const char* unlocked;
-  const char* locking;
-  const char* unlocking;
-  const char* jammed;
-  const char* unknown;
-  const char* accepted;
-  const char* rejected;
-  const char* tag;
-};
 
 constexpr Labels kEnglish{"LOCKED", "UNLOCKED", "LOCKING", "UNLOCKING", "JAMMED",
                           "UNKNOWN", "OK", "DENIED", "TAG"};
 constexpr Labels kDanish{"LÅST", "ÅBEN", "LÅSER", "LÅSER OP", "FEJL",
                          "UKENDT", "GODKENDT", "AFVIST", "NFC-TAG"};
 
-const Labels& labelsFor(Language lang) { return lang == Language::Danish ? kDanish : kEnglish; }
 
 /// Draws a padlock centred horizontally. `open` raises the shackle and frees
 /// its left leg from the body.
@@ -325,8 +313,9 @@ uint8_t displayStateFor(uint8_t current, uint8_t target) {
   return current <= STATE_LOCKING ? current : uint8_t(STATE_UNKNOWN);
 }
 
-void renderLockState(Canvas& c, uint8_t state, Language lang) {
-  const Labels& l = labelsFor(lang);
+const Labels& defaultLabels(Language lang) { return lang == Language::Danish ? kDanish : kEnglish; }
+
+void renderLockState(Canvas& c, uint8_t state, const Labels& l) {
   c.clear(kBackground);
   uint32_t color;
   bool open;
@@ -343,8 +332,7 @@ void renderLockState(Canvas& c, uint8_t state, Language lang) {
   c.drawTextCentered(110, label, 2, color);
 }
 
-void renderFeedback(Canvas& c, Feedback fb, Language lang) {
-  const Labels& l = labelsFor(lang);
+void renderFeedback(Canvas& c, Feedback fb, const Labels& l) {
   c.clear(kBackground);
   const float cx = c.width() / 2.0f, cy = 54;
   switch (fb) {

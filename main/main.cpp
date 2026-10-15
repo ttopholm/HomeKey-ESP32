@@ -229,7 +229,7 @@ void setup() {
   lockManager->begin();
 #if CONFIG_HK_STATUS_DISPLAY_ATOMS3R
   statusDisplay = std::make_unique<StatusDisplay>();
-  if (!statusDisplay->begin(static_cast<uint8_t>(lockManager->getCurrentState()))) {
+  if (!statusDisplay->begin(static_cast<uint8_t>(lockManager->getCurrentState()), configManager)) {
     ESP_LOGW(TAG, "Status display not available, continuing without it");
     statusDisplay.reset();
   }

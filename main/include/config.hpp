@@ -258,6 +258,17 @@ namespace espConfig
     uint8_t hkAltActionInitPin = GPIO_HK_ALT_ACTION_INIT_PIN;
     uint8_t hkAltActionInitLedPin = GPIO_HK_ALT_ACTION_INIT_LED_PIN;
     uint16_t hkAltActionInitTimeout = GPIO_HK_ALT_ACTION_INIT_TIMEOUT;
+    // Status display labels. Empty = the built-in text for the language
+    // chosen at build time (CONFIG_HK_STATUS_DISPLAY_LANG_*).
+    std::string displayLabelLocked;
+    std::string displayLabelUnlocked;
+    std::string displayLabelLocking;
+    std::string displayLabelUnlocking;
+    std::string displayLabelJammed;
+    std::string displayLabelUnknown;
+    std::string displayLabelAccepted;
+    std::string displayLabelRejected;
+    std::string displayLabelTag;
   };
 
   /* Automation rules: stored as the exact JSON blob authored in the web UI.

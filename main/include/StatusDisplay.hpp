@@ -5,7 +5,9 @@
 // label, and briefly confirms HomeKey and NFC tag taps. The backlight dims
 // after a period of inactivity and wakes on any event or a press of the
 // button under the screen. Enabled with CONFIG_HK_STATUS_DISPLAY_ATOMS3R.
+#include <array>
 #include <cstdint>
+#include <string>
 #include <vector>
 #include "sdkconfig.h"
 
@@ -19,6 +21,9 @@
 #include "esp_lcd_panel_io.h"
 #include "app_event_loop.hpp"
 #include "GPIOAllocator.hpp"
+#include "StatusDisplayGfx.hpp"
+
+class ConfigManager;
 
 class StatusDisplay {
 public:
@@ -30,11 +35,12 @@ public:
   /// Claims the display pins, brings up panel and backlight, subscribes to
   /// lock and NFC events and starts the render task. Returns false (and logs
   /// why) if the display could not be started; the rest of the firmware is
-  /// unaffected in that case.
-  bool begin(uint8_t initialLockState);
+  /// unaffected in that case. Labels are read from the actions config and
+  /// reloaded whenever they are saved in the web UI.
+  bool begin(uint8_t initialLockState, const ConfigManager& config);
 
 private:
-  enum class MsgType : uint8_t { LockState, Feedback };
+  enum class MsgType : uint8_t { LockState, Feedback, Redraw };
   struct Msg {
     MsgType type;
     uint8_t a;
@@ -50,6 +56,8 @@ private:
   void flush();
   void post(const Msg& m);
   void subscribeEvents();
+  void loadLabels();
+  statusgfx::Labels currentLabels(std::array<std::string, 9>& storage);
   static void taskEntry(void* arg);
   void run();
 
@@ -65,7 +73,11 @@ private:
   QueueHandle_t m_queue = nullptr;
   TaskHandle_t m_task = nullptr;
   uint8_t m_initialState = 3;
+  const ConfigManager* m_config = nullptr;
+  SemaphoreHandle_t m_labelsMutex = nullptr;
+  std::array<std::string, 9> m_customLabels;  // empty entries fall back to defaults
   AppEventLoop::SubscriptionHandle m_lockEvent;
+  AppEventLoop::SubscriptionHandle m_configEvent;
   AppEventLoop::SubscriptionHandle m_nfcEvent;
 };
 
