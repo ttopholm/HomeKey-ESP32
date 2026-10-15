@@ -47,21 +47,15 @@ jobs:
           mkdir -p build managed_components
           sudo chown -R 1000:1000 build managed_components
       - name: ESP-IDF build (esp32s3 + AtomS3R display)
-        uses: espressif/esp-idf-ci-action@v1
-        with:
-          esp_idf_version: v5.5.5
-          target: esp32s3
-          path: '.'
-          extra_docker_args: >-
-            -v ${{ github.workspace }}/build:/project/build
-            -v ${{ github.workspace }}/managed_components:/project/managed_components
-          command: >-
-            bash -c 'set -o pipefail; CI=true idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.atoms3r" merge-bin 2>&1 | tee /project/build.log'
+        run: |
+          set -o pipefail
+          docker run --rm -t -e CI=true -v "$GITHUB_WORKSPACE:/project" -w /project espressif/idf:v5.5.5 \
+            bash -c 'git config --global --add safe.directory "*" && idf.py -DIDF_TARGET=esp32s3 -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.atoms3r" merge-bin' \
+            2>&1 | tee build.log
       - name: Report compiler errors
         if: failure()
         run: |
-          ls -la build.log build/build.log 2>&1 | while IFS= read -r l; do echo "::warning::$l"; done
-          { grep -E "error:|Error|FAILED|fatal" build.log | head -30; tail -n 15 build.log; } 2>&1 | while IFS= read -r l; do echo "::error::$l"; done || true
+          { grep -E "error:|FAILED|fatal|CMake Error" build.log | head -30; tail -n 15 build.log; } 2>&1 | while IFS= read -r l; do echo "::error::$l"; done || true
       - name: Collect binaries
         run: |
           sudo chown -R $USER:$USER build
