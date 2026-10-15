@@ -55,7 +55,12 @@ jobs:
           extra_docker_args: >-
             -v ${{ github.workspace }}/build:/project/build
             -v ${{ github.workspace }}/managed_components:/project/managed_components
-          command: CI=true idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.atoms3r" merge-bin
+          command: >-
+            bash -c 'set -o pipefail; CI=true idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.atoms3r" merge-bin 2>&1 | tee build/build.log'
+      - name: Report compiler errors
+        if: failure()
+        run: |
+          grep -E "error:|Error " build/build.log | head -30 | while IFS= read -r l; do echo "::error::$l"; done || true
       - name: Collect binaries
         run: |
           sudo chown -R $USER:$USER build
