@@ -11,6 +11,10 @@
 #include <string>
 #include <vector>
 #include <cstring>
+#include <algorithm>
+#include <cctype>
+#include "sdkconfig.h"
+#include "app_events.hpp"
 
 const char* MqttManager::TAG = "MqttManager";
 
@@ -124,6 +128,15 @@ bool MqttManager::begin(std::string deviceID) {
       }
     });
     this->deviceID = deviceID;
+
+#if CONFIG_HK_STATUS_DISPLAY_ATOMS3R
+    m_displaySetTopic = m_mqttConfig.mqttClientId + "/display/set";
+    m_displayStateTopic = m_mqttConfig.mqttClientId + "/display/state";
+    m_display_state = AppEventLoop::subscribe(HW_EVENT, HW_DISPLAY_STATE_CHANGED, [&](const uint8_t* data, size_t size){
+      if (size < 1 || data == nullptr || !m_isConnected) return;
+      publish(m_displayStateTopic, data[0] ? "ON" : "OFF", 0, true);
+    });
+#endif
 
     esp_mqtt_client_config_t mqtt_cfg = {};
     mqtt_cfg.broker.address.hostname = m_mqttConfig.mqttBroker.c_str();
@@ -346,6 +359,14 @@ void MqttManager::onConnected() {
         if (ret < 0) ESP_LOGW(TAG, "Failed to subscribe to lockCustomStateCmd");
     }
 
+#if CONFIG_HK_STATUS_DISPLAY_ATOMS3R
+    ret = esp_mqtt_client_subscribe(m_client, m_displaySetTopic.c_str(), 0);
+    if (ret < 0) ESP_LOGW(TAG, "Failed to subscribe to display command topic");
+    // Ask the display to announce its on/off state now that we can publish it.
+    const uint8_t report = DISPLAY_CMD_REPORT;
+    AppEventLoop::publish(HW_EVENT, HW_DISPLAY_COMMAND, &report, 1);
+#endif
+
     if (m_mqttConfig.hassMqttDiscoveryEnabled) {
         publishHassDiscovery();
     }
@@ -373,6 +394,21 @@ void MqttManager::onData(const std::string& topic, const std::string& data) {
     .source = LockManager::MQTT
     };
     std::array<uint8_t, sizeof(EventLockState)> d{};
+#if CONFIG_HK_STATUS_DISPLAY_ATOMS3R
+    if (topic == m_displaySetTopic) {
+      std::string cmd = data;
+      cmd.erase(std::remove_if(cmd.begin(), cmd.end(), [](unsigned char c) { return std::isspace(c); }), cmd.end());
+      std::transform(cmd.begin(), cmd.end(), cmd.begin(), [](unsigned char c) { return std::toupper(c); });
+      uint8_t v;
+      if (cmd == "OFF" || cmd == "0") v = DISPLAY_CMD_OFF;
+      else if (cmd == "ON" || cmd == "1") v = DISPLAY_CMD_ON;
+      else if (cmd == "WAKE") v = DISPLAY_CMD_WAKE;
+      else if (cmd == "WAKE_STATE") v = DISPLAY_CMD_WAKE_STATE;
+      else { ESP_LOGW(TAG, "Invalid display command: %s (use ON, OFF, WAKE or WAKE_STATE)", data.c_str()); return; }
+      AppEventLoop::publish(HW_EVENT, HW_DISPLAY_COMMAND, &v, 1);
+      return;
+    }
+#endif
     if (topic == m_mqttConfig.lockStateCmd) {
       uint8_t v; if (!to_u8(data, v)) { ESP_LOGW(TAG, "Invalid lockStateCmd payload: %s", data.c_str()); return; }
       s.currentState = v;
@@ -605,6 +641,32 @@ void MqttManager::publishHassDiscovery() {
             p.addString("value_template", "{{ value_json.uid }}");
         });
     }
+
+#if CONFIG_HK_STATUS_DISPLAY_ATOMS3R
+    publishConfig("Display", "switch/" + m_mqttConfig.mqttClientId + "/display/config", [&](JsonBuilder& p) {
+        cJSON_ReplaceItemInObjectCaseSensitive(p.get(), "unique_id", cJSON_CreateString((deviceID + "_display").c_str()));
+        p.addString("icon", "mdi:monitor");
+        p.addString("state_topic", m_displayStateTopic.c_str());
+        p.addString("command_topic", m_displaySetTopic.c_str());
+        p.addString("payload_on", "ON");
+        p.addString("payload_off", "OFF");
+        p.addString("availability_topic", m_mqttConfig.lwtTopic.c_str());
+    });
+    publishConfig("Wake display", "button/" + m_mqttConfig.mqttClientId + "/display_wake/config", [&](JsonBuilder& p) {
+        cJSON_ReplaceItemInObjectCaseSensitive(p.get(), "unique_id", cJSON_CreateString((deviceID + "_display_wake").c_str()));
+        p.addString("icon", "mdi:monitor-eye");
+        p.addString("command_topic", m_displaySetTopic.c_str());
+        p.addString("payload_press", "WAKE");
+        p.addString("availability_topic", m_mqttConfig.lwtTopic.c_str());
+    });
+    publishConfig("Show lock state", "button/" + m_mqttConfig.mqttClientId + "/display_wake_state/config", [&](JsonBuilder& p) {
+        cJSON_ReplaceItemInObjectCaseSensitive(p.get(), "unique_id", cJSON_CreateString((deviceID + "_display_wake_state").c_str()));
+        p.addString("icon", "mdi:lock-question");
+        p.addString("command_topic", m_displaySetTopic.c_str());
+        p.addString("payload_press", "WAKE_STATE");
+        p.addString("availability_topic", m_mqttConfig.lwtTopic.c_str());
+    });
+#endif
 
     ESP_LOGI(TAG, "HASS discovery messages published.");
 }

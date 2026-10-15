@@ -59,6 +59,10 @@ public:
   void fillCapsule(float x0, float y0, float x1, float y1, float thickness, uint32_t color);
   /// Upper half of a ring, used for the padlock shackle.
   void fillUpperArc(float cx, float cy, float radius, float thickness, uint32_t color);
+  /// Ring segment opening to the right, +/- `halfAngleDeg` around the x axis
+  /// (NFC "waves").
+  void fillArcRight(float cx, float cy, float radius, float thickness, float halfAngleDeg,
+                    uint32_t color);
 
   /// Bitmap text, `scale` x the 5x7 font. Accepts UTF-8 Æ, Ø and Å.
   void drawText(int x, int y, const char* utf8, int scale, uint32_t color);
@@ -87,6 +91,7 @@ struct Labels {
   const char* accepted;
   const char* rejected;
   const char* tag;
+  const char* idle;  // neutral screen that does not reveal the lock state
 };
 
 /// Built-in texts for a language, used for any label left empty in the config.
@@ -94,6 +99,8 @@ const Labels& defaultLabels(Language lang);
 
 /// Draws the resting screen for a lock state.
 void renderLockState(Canvas& c, uint8_t state, const Labels& labels);
+/// Draws the neutral "hold your phone here" screen.
+void renderIdle(Canvas& c, const Labels& labels);
 /// Draws a short confirmation after a tap.
 void renderFeedback(Canvas& c, Feedback fb, const Labels& labels);
 

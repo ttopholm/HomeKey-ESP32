@@ -292,10 +292,20 @@ export interface ActionsConfig {
   displayLabelRejected: string;
   /** Status display text: Regular NFC tag read (empty = built-in) */
   displayLabelTag: string;
+  /** Status display: neutral screen text (empty = built-in) */
+  displayLabelIdle: string;
+  /** Status display resting screen: 0 = lock state, 1 = neutral */
+  displayMode: number;
+  /** Status display: turn off (true) or dim (false) after the timeout */
+  displayIdleOff: boolean;
+  /** Status display: seconds without activity before dimming/off, 0 = never */
+  displayTimeout: number;
   /** Read-only: present when the firmware was built with the status display */
   _displayAvailable?: boolean;
   /** Read-only: built-in display texts, keyed like the displayLabel* fields */
   _displayDefaults?: Record<string, string>;
+  /** Read-only: MQTT topic for display commands */
+  _displayMqttTopic?: string;
 }
 
 /**

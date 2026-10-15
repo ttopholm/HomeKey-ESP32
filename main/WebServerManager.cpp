@@ -797,6 +797,11 @@ esp_err_t WebServerManager::handleGetConfig(httpd_req_t *req) {
       cJSON_AddStringToObject(defs, "displayLabelAccepted", d.accepted);
       cJSON_AddStringToObject(defs, "displayLabelRejected", d.rejected);
       cJSON_AddStringToObject(defs, "displayLabelTag", d.tag);
+      cJSON_AddStringToObject(defs, "displayLabelIdle", d.idle);
+      // MQTT topic the display listens on, for the help text in the UI.
+      const auto& mqtt = instance->m_configManager.getConfig<espConfig::mqttConfig_t>();
+      cJSON_AddStringToObject(dataGuard.get(), "_displayMqttTopic",
+                              (mqtt.mqttClientId + "/display/set").c_str());
     }
 #endif
   } else if (type == "automation"){
@@ -1077,7 +1082,7 @@ esp_err_t WebServerManager::handleSaveConfig(httpd_req_t *req) {
     return ESP_OK; // validateRequest already sent a full error response
   }
 
-  bool success = false, rebootNeeded = false, displayLabelsChanged = false;
+  bool success = false, rebootNeeded = false, displaySettingsChanged = false;
   std::string rebootMsg, errorMsg;
 
   cJSON *it = obj.get()->child;
@@ -1129,8 +1134,8 @@ esp_err_t WebServerManager::handleSaveConfig(httpd_req_t *req) {
       std::vector<uint8_t> event_data;
       alpaca::serialize(event, event_data);
       AppEventLoop::publish(HK_EVENT, HK_INTERNAL_EVENT, event_data.data(), event_data.size());
-    } else if (keyStr.starts_with("displayLabel")) {
-      displayLabelsChanged = true;
+    } else if (keyStr.starts_with("display")) {
+      displaySettingsChanged = true;
     } else if (keyStr == "neoPixelType") {
       rebootNeeded = true;
       rebootMsg = "Pixel Type changed, reboot needed! Rebooting...";
@@ -1156,9 +1161,9 @@ esp_err_t WebServerManager::handleSaveConfig(httpd_req_t *req) {
     result = instance->m_configManager.updateFromJson<espConfig::actions_config_t>(data_str);
     if (!result.empty()) {
       success = instance->m_configManager.saveConfig<espConfig::actions_config_t>();
-      if (success && displayLabelsChanged) {
+      if (success && displaySettingsChanged) {
         // Published after the update so subscribers read the new values.
-        EventValueChanged s{.name = "displayLabels"};
+        EventValueChanged s{.name = "displaySettings"};
         std::vector<uint8_t> d;
         alpaca::serialize(s, d);
         AppEventLoop::publish(HW_EVENT, HW_CONFIG_CHANGED, d.data(), d.size());

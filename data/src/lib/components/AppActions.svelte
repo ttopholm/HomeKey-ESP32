@@ -15,11 +15,14 @@
   const hasDisplay = actions?._displayAvailable === true;
   // svelte-ignore state_referenced_locally
   const displayDefaults: Record<string, string> = actions?._displayDefaults ?? {};
+  // svelte-ignore state_referenced_locally
+  const displayTopic: string = actions?._displayMqttTopic ?? '<client id>/display/set';
 
   type LabelKey =
     | 'displayLabelLocked' | 'displayLabelUnlocked' | 'displayLabelLocking'
     | 'displayLabelUnlocking' | 'displayLabelJammed' | 'displayLabelUnknown'
-    | 'displayLabelAccepted' | 'displayLabelRejected' | 'displayLabelTag';
+    | 'displayLabelAccepted' | 'displayLabelRejected' | 'displayLabelTag'
+    | 'displayLabelIdle';
 
   const lockLabels: { key: LabelKey; title: string }[] = [
     { key: 'displayLabelLocked', title: 'Locked' },
@@ -28,6 +31,7 @@
     { key: 'displayLabelUnlocking', title: 'Unlocking' },
     { key: 'displayLabelJammed', title: 'Jammed' },
     { key: 'displayLabelUnknown', title: 'Unknown' },
+    { key: 'displayLabelIdle', title: 'Neutral screen' },
   ];
   const tapLabels: { key: LabelKey; title: string }[] = [
     { key: 'displayLabelAccepted', title: 'HomeKey accepted' },
@@ -887,6 +891,62 @@
             </div>
       {:else if activeTab === 'display' && hasDisplay}
         <div class="space-y-2">
+          <div class="collapse collapse-arrow bg-base-200">
+            <input type="checkbox" name="display-behaviour" checked />
+            <div class="collapse-title font-medium">Behaviour</div>
+            <div class="collapse-content space-y-4">
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="form-control">
+                  <label class="label" for="displayMode">
+                    <span class="label-text text-sm">Resting screen</span>
+                  </label>
+                  <select id="displayMode" class="select select-bordered w-full" bind:value={actionsConfig.displayMode}>
+                    <option value={0}>Lock state</option>
+                    <option value={1}>Neutral (hide lock state)</option>
+                  </select>
+                </div>
+                <div class="form-control">
+                  <label class="label" for="displayIdleOff">
+                    <span class="label-text text-sm">When idle</span>
+                  </label>
+                  <select id="displayIdleOff" class="select select-bordered w-full" bind:value={actionsConfig.displayIdleOff}>
+                    <option value={false}>Dim the screen</option>
+                    <option value={true}>Turn the screen off</option>
+                  </select>
+                </div>
+                <div class="form-control">
+                  <label class="label" for="displayTimeout">
+                    <span class="label-text text-sm">Idle after (seconds, 0 = never)</span>
+                  </label>
+                  <input
+                    id="displayTimeout"
+                    type="number"
+                    min="0"
+                    max="65535"
+                    bind:value={actionsConfig.displayTimeout}
+                    class="input input-bordered w-full"
+                  />
+                </div>
+              </div>
+              <div class="text-sm text-base-content/70 space-y-1">
+                <p>
+                  <b>Neutral</b> shows a "tap your phone" screen instead of the lock state. After a
+                  HomeKey is accepted the lock state is shown until the screen goes idle.
+                </p>
+                <p>
+                  A tap or the button under the screen always wakes it. Lock changes only wake it when
+                  it shows the lock state and is set to dim, so a remote lock at night stays dark.
+                </p>
+                <p>
+                  MQTT: publish to <code class="bg-base-300 px-1 rounded">{displayTopic}</code>:
+                  <code>WAKE</code> (on until idle), <code>WAKE_STATE</code> (same, but shows the lock
+                  state), <code>ON</code> (stays on) or <code>OFF</code>. The on/off state is published
+                  on <code>…/display/state</code>, and Home Assistant discovery adds a Display switch and
+                  two buttons.
+                </p>
+              </div>
+            </div>
+          </div>
           <div class="bg-base-200 rounded-box p-4 text-sm text-base-content/70">
             Texts shown on the status display. Leave a field empty to use the built-in text
             (shown greyed out). About 10 characters fit at full size; longer texts are drawn

@@ -143,9 +143,9 @@ constexpr uint32_t kGrey = Canvas::rgb(0x8A, 0x94, 0xA0);
 
 
 constexpr Labels kEnglish{"LOCKED", "UNLOCKED", "LOCKING", "UNLOCKING", "JAMMED",
-                          "UNKNOWN", "OK", "DENIED", "TAG"};
+                          "UNKNOWN", "OK", "DENIED", "TAG", "TAP PHONE"};
 constexpr Labels kDanish{"LÅST", "ÅBEN", "LÅSER", "LÅSER OP", "FEJL",
-                         "UKENDT", "GODKENDT", "AFVIST", "NFC-TAG"};
+                         "UKENDT", "GODKENDT", "AFVIST", "NFC-TAG", "HOLD HER"};
 
 
 /// Draws a padlock centred horizontally. `open` raises the shackle and frees
@@ -259,6 +259,20 @@ void Canvas::fillUpperArc(float cx, float cy, float radius, float thickness, uin
   });
 }
 
+void Canvas::fillArcRight(float cx, float cy, float radius, float thickness, float halfAngleDeg,
+                          uint32_t color) {
+  const float outer = radius + thickness / 2;
+  const float half = halfAngleDeg * 3.14159265f / 180.0f;
+  fillSdf(cx, cy - outer, cx + outer, cy + outer, color, [=](float px, float py) {
+    const float dx = px - cx, dy = py - cy;
+    const float dist = std::hypot(dx, dy);
+    const float ring = std::fabs(dist - radius) - thickness / 2;
+    // Angular cut expressed in pixels at this radius, so the ends antialias too.
+    const float cut = (std::fabs(std::atan2(dy, dx)) - half) * dist;
+    return std::max(ring, cut);
+  });
+}
+
 void Canvas::drawGlyph(int x, int y, const uint8_t* cols, int scale, uint32_t color) {
   if (cols == kGlyphAA) {
     // Small ring centred over the A, in the three rows above the cap height.
@@ -330,6 +344,18 @@ void renderLockState(Canvas& c, uint8_t state, const Labels& l) {
   }
   drawPadlock(c, open, color);
   c.drawTextCentered(110, label, 2, color);
+}
+
+void renderIdle(Canvas& c, const Labels& l) {
+  c.clear(kBackground);
+  // Phone outline with NFC waves next to it.
+  const float px = 30, py = 20, pw = 34, ph = 58;
+  c.fillRoundRect(px, py, pw, ph, 7, kGrey);
+  c.fillRoundRect(px + 4, py + 6, pw - 8, ph - 14, 3, kBackground);
+  c.fillCapsule(px + pw / 2 - 5, py + ph - 4, px + pw / 2 + 5, py + ph - 4, 2.5f, kBackground);
+  const float wx = px + pw + 2, wy = py + ph / 2;
+  for (int i = 0; i < 3; i++) c.fillArcRight(wx, wy, 9.0f + i * 9.0f, 4.0f, 42.0f, kBlue);
+  c.drawTextCentered(110, l.idle, 2, kGrey);
 }
 
 void renderFeedback(Canvas& c, Feedback fb, const Labels& l) {

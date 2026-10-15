@@ -2,9 +2,11 @@
 // Optional lock status screen for the M5Stack AtomS3R.
 //
 // Shows the lock state (from LOCK_STATE_CHANGED) as a padlock icon with a
-// label, and briefly confirms HomeKey and NFC tag taps. The backlight dims
-// after a period of inactivity and wakes on any event or a press of the
-// button under the screen. Enabled with CONFIG_HK_STATUS_DISPLAY_ATOMS3R.
+// label, or a neutral "tap your phone" screen that does not reveal it, and
+// briefly confirms HomeKey and NFC tag taps. After a period of inactivity the
+// screen dims or turns off; taps, the button under the screen and MQTT
+// commands (HW_DISPLAY_COMMAND) wake it. Behaviour and texts come from the
+// actions config and apply live. Enabled with CONFIG_HK_STATUS_DISPLAY_ATOMS3R.
 #include <array>
 #include <cstdint>
 #include <string>
@@ -40,7 +42,7 @@ public:
   bool begin(uint8_t initialLockState, const ConfigManager& config);
 
 private:
-  enum class MsgType : uint8_t { LockState, Feedback, Redraw };
+  enum class MsgType : uint8_t { LockState, Feedback, Settings, Command };
   struct Msg {
     MsgType type;
     uint8_t a;
@@ -56,8 +58,18 @@ private:
   void flush();
   void post(const Msg& m);
   void subscribeEvents();
-  void loadLabels();
-  statusgfx::Labels currentLabels(std::array<std::string, 9>& storage);
+  struct Settings {
+    uint8_t mode = 0;       // 0 = lock state, 1 = neutral
+    bool idleOff = false;   // off instead of dimmed after the timeout
+    uint16_t timeoutS = 30; // 0 = never
+  };
+  static constexpr size_t kLabelCount = 10;
+  using LabelStore = std::array<std::string, kLabelCount>;
+
+  void loadSettings();
+  Settings currentSettings();
+  statusgfx::Labels currentLabels(LabelStore& storage);
+  void announcePower(bool on);
   static void taskEntry(void* arg);
   void run();
 
@@ -74,11 +86,13 @@ private:
   TaskHandle_t m_task = nullptr;
   uint8_t m_initialState = 3;
   const ConfigManager* m_config = nullptr;
-  SemaphoreHandle_t m_labelsMutex = nullptr;
-  std::array<std::string, 9> m_customLabels;  // empty entries fall back to defaults
+  SemaphoreHandle_t m_settingsMutex = nullptr;
+  LabelStore m_customLabels;  // empty entries fall back to defaults
+  Settings m_settings;
   AppEventLoop::SubscriptionHandle m_lockEvent;
   AppEventLoop::SubscriptionHandle m_configEvent;
   AppEventLoop::SubscriptionHandle m_nfcEvent;
+  AppEventLoop::SubscriptionHandle m_commandEvent;
 };
 
 #endif  // CONFIG_HK_STATUS_DISPLAY_ATOMS3R

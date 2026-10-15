@@ -25,6 +25,17 @@ enum {
     HW_ACTION,
     HW_ALT_ACTION,
     HW_CONFIG_CHANGED,
+    HW_DISPLAY_COMMAND,        // uint8_t DisplayCommand (MQTT -> status display)
+    HW_DISPLAY_STATE_CHANGED,  // uint8_t: 1 = screen on, 0 = off (status display -> MQTT)
+};
+
+/// Payload of HW_DISPLAY_COMMAND.
+enum DisplayCommand : uint8_t {
+    DISPLAY_CMD_OFF = 0,
+    DISPLAY_CMD_ON = 1,          // on until OFF (no timeout)
+    DISPLAY_CMD_WAKE = 2,        // on until the inactivity timeout
+    DISPLAY_CMD_WAKE_STATE = 3,  // like WAKE, but show the lock state even in neutral mode
+    DISPLAY_CMD_REPORT = 4,      // re-announce the current on/off state
 };
 
 ESP_EVENT_DECLARE_BASE(MQTT_EVENT);

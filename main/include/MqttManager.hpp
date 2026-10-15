@@ -123,6 +123,10 @@ private:
     AppEventLoop::SubscriptionHandle m_lock_state_changed;
     AppEventLoop::SubscriptionHandle m_alt_action;
     AppEventLoop::SubscriptionHandle m_nfc_event;
+    // Status display (CONFIG_HK_STATUS_DISPLAY_ATOMS3R): <clientId>/display/set and /state
+    AppEventLoop::SubscriptionHandle m_display_state;
+    std::string m_displaySetTopic;
+    std::string m_displayStateTopic;
 
     // Status tracking (replaces event-based status publishing)
     MqttErrorCode m_lastErrorCode = MqttErrorCode::NONE;

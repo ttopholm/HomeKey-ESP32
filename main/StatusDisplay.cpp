@@ -11,6 +11,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "eventStructs.hpp"
+#include "app_events.hpp"
 #include "StatusDisplayGfx.hpp"
 #include "ConfigManager.hpp"
 #include "config.hpp"
@@ -110,6 +111,7 @@ StatusDisplay::~StatusDisplay() {
   m_lockEvent.reset();
   m_configEvent.reset();
   m_nfcEvent.reset();
+  m_commandEvent.reset();
   if (m_task) vTaskDelete(m_task);
   if (m_io) esp_lcd_panel_io_del(m_io);
   if (m_spiBusOwned) spi_bus_free(LCD_HOST);
@@ -118,7 +120,7 @@ StatusDisplay::~StatusDisplay() {
   if (m_fb) heap_caps_free(m_fb);
   if (m_queue) vQueueDelete(m_queue);
   if (m_txDone) vSemaphoreDelete(m_txDone);
-  if (m_labelsMutex) vSemaphoreDelete(m_labelsMutex);
+  if (m_settingsMutex) vSemaphoreDelete(m_settingsMutex);
 }
 
 bool StatusDisplay::claimPins() {
@@ -298,9 +300,14 @@ void StatusDisplay::subscribeEvents() {
         std::span<const uint8_t> payload(data, size);
         std::error_code ec;
         EventValueChanged ev = alpaca::deserialize<EventValueChanged>(payload, ec);
-        if (ec || ev.name != "displayLabels") return;
-        loadLabels();
-        post({MsgType::Redraw, 0, 0});
+        if (ec || ev.name != "displaySettings") return;
+        loadSettings();
+        post({MsgType::Settings, 0, 0});
+      });
+  m_commandEvent = AppEventLoop::subscribe(
+      HW_EVENT, HW_DISPLAY_COMMAND, [this](const uint8_t* data, size_t size) {
+        if (size < 1 || data == nullptr) return;
+        post({MsgType::Command, data[0], 0});
       });
   m_lockEvent = AppEventLoop::subscribe(
       LOCK_EVENT, LOCK_STATE_CHANGED, [this](const uint8_t* data, size_t size) {
@@ -331,37 +338,53 @@ void StatusDisplay::subscribeEvents() {
       });
 }
 
-void StatusDisplay::loadLabels() {
+void StatusDisplay::loadSettings() {
   const auto& a = m_config->getConfig<espConfig::actions_config_t>();
-  std::array<std::string, 9> fresh = {
+  LabelStore fresh = {
       a.displayLabelLocked,   a.displayLabelUnlocked, a.displayLabelLocking,
       a.displayLabelUnlocking, a.displayLabelJammed,  a.displayLabelUnknown,
       a.displayLabelAccepted, a.displayLabelRejected, a.displayLabelTag,
+      a.displayLabelIdle,
   };
-  xSemaphoreTake(m_labelsMutex, portMAX_DELAY);
+  Settings settings{a.displayMode, a.displayIdleOff, a.displayTimeout};
+  xSemaphoreTake(m_settingsMutex, portMAX_DELAY);
   m_customLabels = std::move(fresh);
-  xSemaphoreGive(m_labelsMutex);
+  m_settings = settings;
+  xSemaphoreGive(m_settingsMutex);
 }
 
-statusgfx::Labels StatusDisplay::currentLabels(std::array<std::string, 9>& storage) {
-  xSemaphoreTake(m_labelsMutex, portMAX_DELAY);
+StatusDisplay::Settings StatusDisplay::currentSettings() {
+  xSemaphoreTake(m_settingsMutex, portMAX_DELAY);
+  Settings s = m_settings;
+  xSemaphoreGive(m_settingsMutex);
+  return s;
+}
+
+statusgfx::Labels StatusDisplay::currentLabels(LabelStore& storage) {
+  xSemaphoreTake(m_settingsMutex, portMAX_DELAY);
   storage = m_customLabels;
-  xSemaphoreGive(m_labelsMutex);
+  xSemaphoreGive(m_settingsMutex);
   const statusgfx::Labels& d = statusgfx::defaultLabels(language());
   auto pick = [&](size_t i, const char* fallback) {
     return storage[i].empty() ? fallback : storage[i].c_str();
   };
   return {pick(0, d.locked),   pick(1, d.unlocked), pick(2, d.locking),
           pick(3, d.unlocking), pick(4, d.jammed),  pick(5, d.unknown),
-          pick(6, d.accepted),  pick(7, d.rejected), pick(8, d.tag)};
+          pick(6, d.accepted),  pick(7, d.rejected), pick(8, d.tag),
+          pick(9, d.idle)};
+}
+
+void StatusDisplay::announcePower(bool on) {
+  const uint8_t v = on ? 1 : 0;
+  AppEventLoop::publish(HW_EVENT, HW_DISPLAY_STATE_CHANGED, &v, 1);
 }
 
 bool StatusDisplay::begin(uint8_t initialLockState, const ConfigManager& config) {
   m_initialState = initialLockState;
   m_config = &config;
-  m_labelsMutex = xSemaphoreCreateMutex();
-  if (!m_labelsMutex) return false;
-  loadLabels();
+  m_settingsMutex = xSemaphoreCreateMutex();
+  if (!m_settingsMutex) return false;
+  loadSettings();
   if (!claimPins()) return false;
 
   m_fb = static_cast<uint16_t*>(heap_caps_malloc(FB_BYTES, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
@@ -398,9 +421,14 @@ bool StatusDisplay::begin(uint8_t initialLockState, const ConfigManager& config)
 
   // Draw the first frame before the backlight comes on.
   statusgfx::Canvas canvas(m_fb, LCD_SIZE, LCD_SIZE, true);
-  std::array<std::string, 9> labelStore;
-  statusgfx::renderLockState(canvas, statusgfx::displayStateFor(initialLockState, initialLockState),
-                             currentLabels(labelStore));
+  LabelStore labelStore;
+  if (currentSettings().mode == 1) {
+    statusgfx::renderIdle(canvas, currentLabels(labelStore));
+  } else {
+    statusgfx::renderLockState(canvas,
+                               statusgfx::displayStateFor(initialLockState, initialLockState),
+                               currentLabels(labelStore));
+  }
   flush();
   xSemaphoreTake(m_txDone, pdMS_TO_TICKS(200));
   xSemaphoreGive(m_txDone);
@@ -420,9 +448,12 @@ void StatusDisplay::taskEntry(void* arg) { static_cast<StatusDisplay*>(arg)->run
 
 void StatusDisplay::run() {
   using namespace statusgfx;
+  enum class Power : uint8_t { Awake, Dimmed, Off };
+
   Canvas canvas(m_fb, LCD_SIZE, LCD_SIZE, true);
-  std::array<std::string, 9> labelStore;
+  LabelStore labelStore;
   Labels labels = currentLabels(labelStore);
+  Settings settings = currentSettings();
 
   uint8_t current = m_initialState;
   uint8_t shown = displayStateFor(current, current);
@@ -430,37 +461,92 @@ void StatusDisplay::run() {
   bool overlay = false;
   int64_t overlayUntil = 0;
   int64_t lastActivity = nowMs();
-  bool dimmed = false;
+  Power power = Power::Awake;
+  bool stickyOn = false;     // MQTT "ON": ignore the inactivity timeout
+  bool revealState = false;  // show the lock state in neutral mode until the screen sleeps
   bool lastButton = true;
+  announcePower(true);
+
+  auto drawResting = [&] {
+    xSemaphoreTake(m_txDone, pdMS_TO_TICKS(200));  // previous frame fully sent
+    if (settings.mode == 1 && !revealState) {
+      renderIdle(canvas, labels);
+    } else {
+      renderLockState(canvas, shown, labels);
+    }
+    flush();
+  };
 
   for (;;) {
     Msg m;
     const bool got = xQueueReceive(m_queue, &m, pdMS_TO_TICKS(50)) == pdTRUE;
     const int64_t now = nowMs();
     bool redraw = false;
-    bool activity = false;
+    bool wake = false;
+    bool turnOff = false;
 
     if (got) {
-      activity = true;
-      if (m.type == MsgType::LockState) {
-        current = m.a;
-        const uint8_t next = displayStateFor(m.a, m.b);
-        if (next != shown) {
-          shown = next;
-          transitionSince = now;
-          redraw = !overlay;
+      switch (m.type) {
+        case MsgType::LockState: {
+          current = m.a;
+          const uint8_t next = displayStateFor(m.a, m.b);
+          if (next != shown) {
+            shown = next;
+            transitionSince = now;
+            redraw = !overlay;
+            // Lock changes light the screen only when it shows the state and
+            // never goes dark on its own; otherwise a remote lock at night
+            // would light it up for anyone outside.
+            wake = settings.mode == 0 && !settings.idleOff;
+          }
+          break;
         }
-      } else if (m.type == MsgType::Redraw) {
-        // Labels were changed in the web UI: show the result right away.
-        labels = currentLabels(labelStore);
-        overlay = false;
-        redraw = true;
-      } else {
-        overlay = true;
-        overlayUntil = now + CONFIG_HK_STATUS_DISPLAY_FEEDBACK_MS;
-        xSemaphoreTake(m_txDone, pdMS_TO_TICKS(200));  // previous frame fully sent
-        renderFeedback(canvas, static_cast<Feedback>(m.a), labels);
-        flush();
+        case MsgType::Settings:
+          labels = currentLabels(labelStore);
+          settings = currentSettings();
+          overlay = false;
+          redraw = true;
+          wake = true;  // show the result right away
+          break;
+        case MsgType::Feedback: {
+          const auto fb = static_cast<Feedback>(m.a);
+          // Whoever was just let in may see the state until the screen sleeps.
+          if (fb == Feedback::HomeKeyAccepted) revealState = true;
+          overlay = true;
+          overlayUntil = now + CONFIG_HK_STATUS_DISPLAY_FEEDBACK_MS;
+          xSemaphoreTake(m_txDone, pdMS_TO_TICKS(200));  // previous frame fully sent
+          renderFeedback(canvas, fb, labels);
+          flush();
+          wake = true;
+          break;
+        }
+        case MsgType::Command:
+          switch (m.a) {
+            case DISPLAY_CMD_OFF:
+              stickyOn = false;
+              turnOff = true;
+              break;
+            case DISPLAY_CMD_ON:
+              stickyOn = true;
+              wake = true;
+              break;
+            case DISPLAY_CMD_WAKE_STATE:
+              if (!revealState) redraw = true;
+              revealState = true;
+              stickyOn = false;
+              wake = true;
+              break;
+            case DISPLAY_CMD_WAKE:
+              stickyOn = false;
+              wake = true;
+              break;
+            case DISPLAY_CMD_REPORT:
+              announcePower(power != Power::Off);
+              break;
+            default:
+              break;
+          }
+          break;
       }
     }
 
@@ -482,26 +568,47 @@ void StatusDisplay::run() {
     }
 
     const bool button = gpio_get_level(PIN_BUTTON);
-    if (lastButton && !button) activity = true;  // pressed (active low)
+    if (lastButton && !button) wake = true;  // pressed (active low)
     lastButton = button;
 
-    if (activity) {
+    if (wake) {
       lastActivity = now;
-      if (dimmed) {
-        dimmed = false;
-        setBrightness(CONFIG_HK_STATUS_DISPLAY_BRIGHTNESS);
+      if (power == Power::Off) {
+        // Paint before the backlight comes on, so the old frame never flashes.
+        if (!overlay) drawResting();
+        redraw = false;
+        announcePower(true);
       }
-    } else if (CONFIG_HK_STATUS_DISPLAY_DIM_TIMEOUT_S > 0 && !dimmed &&
-               now - lastActivity > CONFIG_HK_STATUS_DISPLAY_DIM_TIMEOUT_S * 1000LL) {
-      dimmed = true;
-      setBrightness(CONFIG_HK_STATUS_DISPLAY_DIM_BRIGHTNESS);
+      if (power != Power::Awake) setBrightness(CONFIG_HK_STATUS_DISPLAY_BRIGHTNESS);
+      power = Power::Awake;
+    } else if (!turnOff && power == Power::Awake && !stickyOn && settings.timeoutS > 0 &&
+               now - lastActivity > settings.timeoutS * 1000LL) {
+      if (settings.idleOff) {
+        turnOff = true;
+      } else {
+        power = Power::Dimmed;
+        setBrightness(CONFIG_HK_STATUS_DISPLAY_DIM_BRIGHTNESS);
+        if (revealState) {
+          revealState = false;
+          redraw = !overlay;
+        }
+      }
     }
 
-    if (redraw) {
-      xSemaphoreTake(m_txDone, pdMS_TO_TICKS(200));  // previous frame fully sent
-      renderLockState(canvas, shown, labels);
+    if (turnOff && power != Power::Off) {
+      setBrightness(0);
+      // Also blank the panel itself: nothing readable is left on it.
+      xSemaphoreTake(m_txDone, pdMS_TO_TICKS(200));
+      canvas.clear(0);
       flush();
+      power = Power::Off;
+      overlay = false;
+      revealState = false;
+      redraw = false;
+      announcePower(false);
     }
+
+    if (redraw && power != Power::Off) drawResting();
   }
 }
 
