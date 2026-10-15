@@ -1,0 +1,7 @@
+# M5Stack AtomS3R (8 MB flash): bigger app slots and room for the web UI
+# Name, Type, SubType, Offset, Size, Flags
+nvs,data,nvs,,0x10000,,
+otadata,data,ota,,0x2000,,
+app0,app,ota_0,,0x300000,,
+app1,app,ota_1,,0x300000,,
+spiffs,data,spiffs,,0x100000,,

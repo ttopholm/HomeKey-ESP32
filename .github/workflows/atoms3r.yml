@@ -60,6 +60,7 @@ jobs:
         run: |
           sudo chown -R $USER:$USER build
           grep -q '^CONFIG_HK_STATUS_DISPLAY_ATOMS3R=y' sdkconfig
+          grep -q '^CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y' sdkconfig
           mv build/HomeKey-ESP32.bin build/atoms3r.firmware.ota.bin
           mv build/merged-binary.bin build/atoms3r.firmware.factory.bin
       - uses: actions/upload-artifact@v7
